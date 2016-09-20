@@ -152,6 +152,7 @@ int TimedPBKDF2(const char *pass, int passlen, const unsigned char *salt,
 // - Version 3:0 adds a new IV mechanism
 static Interface BlowfishInterface("ssl/blowfish", 3, 0, 2);
 static Interface AESInterface("ssl/aes", 3, 0, 2);
+static Interface ChaCha20Interface("ssl/chacha20", 3, 0, 2);
 
 #ifndef OPENSSL_NO_BF
 
@@ -216,6 +217,48 @@ static std::shared_ptr<Cipher> NewAESCipher(const Interface &iface,
 static bool AES_Cipher_registered =
     Cipher::Register("AES", "16 byte block cipher", AESInterface, AESKeyRange,
                      AESBlockRange, NewAESCipher);
+#endif
+
+
+#ifndef OPENSSL_NO_CHACHA20
+
+static Range ChaCha20KeyRange(256,512,64);
+static Range ChaCha20BlockRange(64, 4096, 16);
+
+static std::shared_ptr<Cipher> NewChaCha20Cipher(const Interface &iface,
+                                            int keyLen) {
+  if (keyLen <= 0) keyLen = 256;
+
+  keyLen = ChaCha20KeyRange.closest(keyLen);
+
+  const EVP_CIPHER *blockCipher = EVP_chacha20();
+  const EVP_CIPHER *streamCipher = EVP_chacha20();
+
+  switch (keyLen) {
+    case 128:
+      blockCipher = EVP_aes_128_cbc();
+      streamCipher = EVP_aes_128_cfb();
+      break;
+
+    case 192:
+      blockCipher = EVP_aes_192_cbc();
+      streamCipher = EVP_aes_192_cfb();
+      break;
+
+    case 256:
+    default:
+      blockCipher = EVP_aes_256_cbc();
+      streamCipher = EVP_aes_256_cfb();
+      break;
+  }
+
+  return std::shared_ptr<Cipher>(new SSL_Cipher(
+      iface, ChaCha20Interface, blockCipher, streamCipher, keyLen / 8));
+}
+
+static bool ChaCha20_Cipher_registered =
+    Cipher::Register("ChaCha20", "16 byte block cipher", ChaCha20Interface, ChaCha20KeyRange,
+                     ChaCha20BlockRange, NewChaCha20Cipher);
 #endif
 
 class SSLKey : public AbstractCipherKey {
